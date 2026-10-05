@@ -69,6 +69,8 @@
   </div>
 </template>
 <script lang="ts">
+import { cloudOrigins } from "../../models/cloud-auth";
+
 import Vue from "vue";
 import { isSafari } from "../../browser";
 
@@ -121,10 +123,7 @@ export default Vue.extend({
       } else if (tab === "DrivePage") {
         chrome.permissions.request(
           {
-            origins: [
-              "https://www.googleapis.com/*",
-              "https://accounts.google.com/o/oauth2/revoke",
-            ],
+            origins: cloudOrigins("drive"),
           },
           async (granted) => {
             if (granted) {
@@ -138,10 +137,7 @@ export default Vue.extend({
       } else if (tab === "OneDrivePage") {
         chrome.permissions.request(
           {
-            origins: [
-              "https://graph.microsoft.com/me/*",
-              "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-            ],
+            origins: cloudOrigins("onedrive"),
           },
           async (granted) => {
             if (granted) {

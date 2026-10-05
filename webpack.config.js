@@ -1,4 +1,6 @@
 const path = require("path");
+const { DefinePlugin } = require("webpack");
+const cloudConfig = require("./scripts/cloud-config");
 const { VueLoaderPlugin } = require("vue-loader");
 const ForkTsCheckerWebpackPlugin = require("fork-ts-checker-webpack-plugin");
 
@@ -53,6 +55,7 @@ module.exports = {
     ],
   },
   plugins: [
+    new DefinePlugin({ __CLOUD_CONFIG__: JSON.stringify(cloudConfig) }),
     new VueLoaderPlugin(),
     new ForkTsCheckerWebpackPlugin({
       typescript: {

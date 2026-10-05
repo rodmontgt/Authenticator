@@ -15,6 +15,10 @@ A Safari edition of Authenticator is available on the App Store. We do not provi
 
 ## Build Setup
 
+For this fork's change history and contribution process, see [CHANGELOG.md](CHANGELOG.md), [pending release notes](docs/release-notes/next.md), and [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For portable Chrome and Edge development builds, including Windows without Bash, see [DESARROLLO.md](DESARROLLO.md).
+
 ``` bash
 # install development dependencies
 npm install
@@ -36,12 +40,14 @@ To reproduce a build for Safari, please follow contribution guidance in [Authent
 ``` bash
 # install development dependencies
 npm install
-# compiles the Chrome extension to the `./test/chrome` directory
+# compiles the Chrome extension to the `./build/chrome` directory and watches changes
 npm run dev:chrome
-# load the unpacked extension from the `./test/chrome/ directory in Chrome
+# load the unpacked extension from the `./build/chrome` directory in Chrome
 ```
 
-Note that Windows users should download a tool like [Git Bash](https://git-scm.com/download/win) or [Cygwin](http://cygwin.com/) to build.
+The portable `build:chrome`, `build:edge`, `build:browsers`, `dev:chrome`, and `dev:edge` commands do not require Bash. The original build commands require Bash on Windows.
+
+For Google Drive and OneDrive Business configuration, see [CLOUD_BACKUP.md](CLOUD_BACKUP.md).
 
 ## Acknowledgment
 

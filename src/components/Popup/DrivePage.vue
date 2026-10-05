@@ -1,7 +1,11 @@
 <template>
   <div>
     <div>
-      <div class="text warning" v-show="!isEncrypted || !defaultEncryption">
+      <div class="text warning" v-if="authError">{{ authError }}</div>
+      <div
+        class="text warning"
+        v-show="isEncrypted === 'false' || !defaultEncryption"
+      >
         {{ i18n.dropbox_risk }}
       </div>
       <div v-show="backupToken">
@@ -31,7 +35,8 @@
 </template>
 <script lang="ts">
 import Vue from "vue";
-import { isChrome } from "../../browser";
+import { disconnectCloud } from "../../models/cloud-auth";
+
 import { Drive } from "../../models/backup";
 import { UserSettings } from "../../models/settings";
 
@@ -41,29 +46,22 @@ export default Vue.extend({
   data: function () {
     return {
       email: this.i18n.loading,
+      authError: "",
     };
-  },
-  created() {
-    UserSettings.updateItems();
   },
   computed: {
     defaultEncryption: function () {
       return this.$store.state.accounts.defaultEncryption;
     },
     isEncrypted: {
-      get(): boolean {
-        if (UserSettings.items[`${service}Encrypted`] === null) {
-          this.$store.commit("backup/setEnc", { service, value: true });
-          UserSettings.items[`${service}Encrypted`] = true;
-          UserSettings.commitItems();
-          return true;
-        }
-        return this.$store.state.backup.driveEncrypted;
+      get(): string {
+        return String(this.$store.state.backup.driveEncrypted);
       },
       set(newValue: string) {
-        UserSettings.items.driveEncrypted = newValue === "true";
+        const value = newValue === "true";
+        UserSettings.items.driveEncrypted = value;
         UserSettings.commitItems();
-        this.$store.commit("backup/setEnc", { service, value: newValue });
+        this.$store.commit("backup/setEnc", { service, value });
       },
     },
     backupToken: function () {
@@ -71,54 +69,51 @@ export default Vue.extend({
     },
   },
   methods: {
-    getBackupToken() {
-      chrome.runtime.sendMessage({ action: service });
-    },
-    async backupLogout() {
-      await new Promise((resolve: (value: boolean) => void) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open(
-          "POST",
-          "https://accounts.google.com/o/oauth2/revoke?token=" +
-            UserSettings.items.driveToken
-        );
-        xhr.onreadystatechange = () => {
-          if (xhr.readyState === 4) {
-            if (isChrome) {
-              chrome.identity.removeCachedAuthToken(
-                { token: UserSettings.items.driveToken as string },
-                () => {
-                  resolve(true);
-                }
-              );
-            } else {
-              resolve(true);
-            }
+    getBackupToken(business = false) {
+      this.authError = "";
+      chrome.runtime.sendMessage(
+        { action: service, business },
+        async (response) => {
+          if (chrome.runtime.lastError) {
+            this.authError =
+              "Sign-in could not finish. Reopen the extension to check its status.";
             return;
           }
-        };
-        xhr.send();
-      });
-      UserSettings.removeItem("driveToken");
+          if (!response?.success) {
+            this.authError = response?.error || "Sign-in could not finish.";
+            return;
+          }
+          this.$store.commit("backup/setToken", { service, value: true });
+          await UserSettings.updateItems();
+          try {
+            this.email = await this.getUser();
+          } catch {
+            this.email = "";
+          }
+        }
+      );
+    },
+    async backupLogout() {
+      await disconnectCloud(service);
       this.$store.commit("backup/setToken", { service, value: false });
       this.$store.commit("style/hideInfo");
     },
     async backupUpload() {
-      const drive = new Drive();
-      const response = await drive.upload(
-        this.$store.state.accounts.encryption
-      );
-      if (response === true) {
-        this.$store.commit("notification/alert", this.i18n.updateSuccess);
-      } else if (UserSettings.items.driveRevoked === true) {
+      this.authError = "";
+      try {
+        const provider = new Drive();
+        const response = await provider.upload(
+          this.$store.state.accounts.encryption.get(this.defaultEncryption)
+        );
         this.$store.commit(
           "notification/alert",
-          chrome.i18n.getMessage("token_revoked", ["Google Drive"])
+          response ? this.i18n.updateSuccess : this.i18n.updateFailure
         );
-        UserSettings.removeItem("driveRevoked");
-        this.$store.commit("backup/setToken", { service, value: false });
-      } else {
-        this.$store.commit("notification/alert", this.i18n.updateFailure);
+      } catch (error) {
+        this.authError =
+          error instanceof Error ? error.message : this.i18n.updateFailure;
+        if (UserSettings.items.driveRevoked)
+          this.$store.commit("backup/setToken", { service, value: false });
       }
     },
     async getUser() {
@@ -127,8 +122,18 @@ export default Vue.extend({
     },
   },
   mounted: async function () {
+    await UserSettings.updateItems();
+    if (UserSettings.items.cloudBackupErrorService === service)
+      this.authError = UserSettings.items.cloudBackupError || "";
     if (this.backupToken) {
-      this.email = await this.getUser();
+      try {
+        this.email = await this.getUser();
+      } catch (error) {
+        this.authError =
+          error instanceof Error ? error.message : this.i18n.updateFailure;
+        if (UserSettings.items.driveRevoked)
+          this.$store.commit("backup/setToken", { service, value: false });
+      }
     }
   },
 });

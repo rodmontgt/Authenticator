@@ -10,6 +10,9 @@ interface UserSettingsData {
   driveRefreshToken?: string;
   driveRevoked?: boolean;
   driveToken?: string;
+  driveTokenExpiresAt?: number;
+  cloudBackupError?: string;
+  cloudBackupErrorService?: string;
   dropboxEncrypted?: boolean;
   dropboxRevoked?: boolean;
   dropboxToken?: string;
@@ -20,6 +23,7 @@ interface UserSettingsData {
   oneDriveRevoked?: boolean;
   oneDriveRefreshToken?: string;
   oneDriveToken?: string;
+  oneDriveTokenExpiresAt?: number;
   storageLocation?: StorageLocation;
 
   // syncable settings
@@ -40,6 +44,9 @@ const LocalUserSettingsDataKeys = [
   "driveRefreshToken",
   "driveRevoked",
   "driveToken",
+  "driveTokenExpiresAt",
+  "cloudBackupError",
+  "cloudBackupErrorService",
   "dropboxEncrypted",
   "dropboxRevoked",
   "dropboxToken",
@@ -50,6 +57,7 @@ const LocalUserSettingsDataKeys = [
   "oneDriveRevoked",
   "oneDriveRefreshToken",
   "oneDriveToken",
+  "oneDriveTokenExpiresAt",
   "storageLocation",
 ];
 
