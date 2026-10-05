@@ -1,4 +1,8 @@
 node_modules
+.source-download/
+cloud-config.local.json
+.env
+server/.env
 build
 chrome*
 firefox*

@@ -1,0 +1,10 @@
+{
+  "drive": {
+    "client_id": "",
+    "token_broker_url": "http://localhost:8787"
+  },
+  "onedrive": {
+    "client_id": "",
+    "tenant_id": ""
+  }
+}

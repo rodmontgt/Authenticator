@@ -2,13 +2,13 @@ import { UserSettings } from "../models/settings";
 
 export class Backup implements Module {
   async getModule() {
-    UserSettings.updateItems();
+    await UserSettings.updateItems();
 
     return {
       state: {
         dropboxEncrypted: UserSettings.items.dropboxEncrypted === true,
-        driveEncrypted: UserSettings.items.driveEncrypted === true,
-        oneDriveEncrypted: UserSettings.items.oneDriveEncrypted === true,
+        driveEncrypted: UserSettings.items.driveEncrypted !== false,
+        oneDriveEncrypted: UserSettings.items.oneDriveEncrypted !== false,
         dropboxToken: Boolean(UserSettings.items.dropboxToken),
         driveToken: Boolean(UserSettings.items.driveToken),
         oneDriveToken: Boolean(UserSettings.items.oneDriveToken),

@@ -1,3 +1,4 @@
+import { connectCloud } from "./models/cloud-auth";
 import { getCredentials } from "./models/credentials";
 import { Encryption } from "./models/encryption";
 import { EntryStorage, ManagedStorage } from "./models/storage";
@@ -16,7 +17,35 @@ import { UserSettings } from "./models/settings";
 
 let contentTab: chrome.tabs.Tab | undefined;
 
-chrome.runtime.onMessage.addListener(async (message, sender) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.action !== "drive" && message.action !== "onedrive") return false;
+  connectCloud(message.action, message.business === true).then(
+    () => sendResponse({ success: true }),
+    async (error: Error) => {
+      await UserSettings.updateItems();
+      UserSettings.items.cloudBackupError = error.message;
+      UserSettings.items.cloudBackupErrorService = message.action;
+      await UserSettings.commitItems();
+      sendResponse({ success: false, error: error.message });
+    }
+  );
+  return true;
+});
+
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message.action === "drive" || message.action === "onedrive") return false;
+  void handleMessage(message, sender).catch((error) =>
+    console.error("Background action failed", error)
+  );
+  return false;
+});
+
+async function handleMessage(
+  message: Parameters<
+    Parameters<typeof chrome.runtime.onMessage.addListener>[0]
+  >[0],
+  sender: chrome.runtime.MessageSender
+) {
   await UserSettings.updateItems();
 
   if (message.action === "getCapture") {
@@ -40,7 +69,7 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
     });
     chrome.alarms.clear("autolock");
     setAutolock();
-  } else if (["dropbox", "drive", "onedrive"].indexOf(message.action) > -1) {
+  } else if (message.action === "dropbox") {
     getBackupToken(message.action);
   } else if (message.action === "lock") {
     chrome.storage.session.set({ cachedPassphrase: null, cachedKeyId: null });
@@ -55,7 +84,7 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
 
   // https://stackoverflow.com/a/56483156
   return true;
-});
+}
 
 chrome.alarms.onAlarm.addListener(() => {
   chrome.storage.session.set({ cachedPassphrase: null, cachedKeyId: null });
@@ -241,173 +270,27 @@ async function getTotp(text: string, silent = false) {
 }
 
 function getBackupToken(service: string) {
-  if (isChrome && service === "drive") {
-    chrome.identity.getAuthToken(
-      {
-        interactive: true,
-        scopes: ["https://www.googleapis.com/auth/drive.file"],
-      },
-      (value) => {
-        if (!value) {
-          return false;
-        }
-        UserSettings.items.driveToken = value;
-        UserSettings.commitItems();
-        chrome.runtime.sendMessage({ action: "drivetoken", value });
-        return true;
-      }
-    );
-  } else {
-    let authUrl = "";
-    let redirUrl = "";
-    if (service === "dropbox") {
-      redirUrl = encodeURIComponent(chrome.identity.getRedirectURL());
-      authUrl =
-        "https://www.dropbox.com/oauth2/authorize?response_type=token&client_id=" +
-        getCredentials().dropbox.client_id +
-        "&redirect_uri=" +
-        redirUrl;
-    } else if (service === "drive") {
-      if (navigator.userAgent.indexOf("Edg") !== -1) {
-        redirUrl = encodeURIComponent("https://authenticator.cc/oauth-edge");
-      } else if (isFirefox) {
-        redirUrl = encodeURIComponent(chrome.identity.getRedirectURL());
-      } else {
-        redirUrl = encodeURIComponent("https://authenticator.cc/oauth");
-      }
-
-      authUrl =
-        "https://accounts.google.com/o/oauth2/v2/auth?response_type=code&access_type=offline&client_id=" +
-        getCredentials().drive.client_id +
-        "&scope=https%3A//www.googleapis.com/auth/drive.file&prompt=consent&redirect_uri=" +
-        redirUrl;
-    } else if (service === "onedrive") {
-      redirUrl = encodeURIComponent(chrome.identity.getRedirectURL());
-      authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${
-        getCredentials().onedrive.client_id
-      }&response_type=code&redirect_uri=${redirUrl}&scope=https%3A%2F%2Fgraph.microsoft.com%2FFiles.ReadWrite${
-        UserSettings.items.oneDriveBusiness !== true ? ".AppFolder" : ""
-      }%20https%3A%2F%2Fgraph.microsoft.com%2FUser.Read%20offline_access&response_mode=query&prompt=consent`;
+  if (service !== "dropbox") return;
+  const url = new URL("https://www.dropbox.com/oauth2/authorize");
+  url.search = new URLSearchParams({
+    response_type: "token",
+    client_id: getCredentials().dropbox.client_id,
+    redirect_uri: chrome.identity.getRedirectURL(),
+  }).toString();
+  chrome.identity.launchWebAuthFlow(
+    { url: url.toString(), interactive: true },
+    async (response) => {
+      if (chrome.runtime.lastError || !response) return;
+      const token = new URLSearchParams(new URL(response).hash.slice(1)).get(
+        "access_token"
+      );
+      if (!token) return;
+      await UserSettings.updateItems();
+      UserSettings.items.dropboxToken = token;
+      await UserSettings.commitItems();
+      await uploadBackup("dropbox");
     }
-    chrome.identity.launchWebAuthFlow(
-      { url: authUrl, interactive: true },
-      async (url) => {
-        if (!url) {
-          return;
-        }
-        let hashMatches = url.split("#");
-        if (service === "drive") {
-          hashMatches = url.slice(0, -1).split("?");
-        } else if (service === "onedrive") {
-          hashMatches = url.split("?");
-        }
-
-        if (hashMatches.length < 2) {
-          return;
-        }
-
-        const hash = hashMatches[1];
-
-        const resData = hash.split("&");
-        for (let i = 0; i < resData.length; i++) {
-          const kv = resData[i];
-          if (/^(.*?)=(.*?)$/.test(kv)) {
-            const kvMatches = kv.match(/^(.*?)=(.*?)$/);
-            if (!kvMatches) {
-              continue;
-            }
-            const key = kvMatches[1];
-            const value = kvMatches[2];
-            if (key === "access_token") {
-              if (service === "dropbox") {
-                UserSettings.items.dropboxToken = value;
-                UserSettings.commitItems();
-                uploadBackup("dropbox");
-                return;
-              }
-            } else if (key === "code") {
-              if (service === "drive") {
-                let success = false;
-
-                const response = await fetch(
-                  "https://www.googleapis.com/oauth2/v4/token?client_id=" +
-                    getCredentials().drive.client_id +
-                    "&client_secret=" +
-                    getCredentials().drive.client_secret +
-                    "&code=" +
-                    value +
-                    "&redirect_uri=" +
-                    redirUrl +
-                    "&grant_type=authorization_code",
-                  {
-                    method: "POST",
-                    headers: {
-                      Accept: "application/json",
-                      "Content-Type": "application/x-www-form-urlencoded",
-                    },
-                  }
-                );
-
-                try {
-                  const res = await response.json();
-
-                  if (res.error) {
-                    console.error(res.error_description);
-                  } else {
-                    UserSettings.items.driveToken = res.access_token;
-                    UserSettings.items.driveRefreshToken = res.refresh_token;
-                    UserSettings.commitItems();
-                    success = true;
-                  }
-                } catch (error) {
-                  console.error(error);
-                  throw error;
-                }
-
-                uploadBackup("drive");
-                return success;
-              } else if (service === "onedrive") {
-                // Need to trade code we got from launchWebAuthFlow for a
-                // token & refresh token
-                let success = false;
-
-                const response = await fetch(
-                  "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-                  {
-                    method: "POST",
-                    headers: {
-                      Accept: "application/json",
-                      "Content-Type": "application/x-www-form-urlencoded",
-                    },
-                  }
-                );
-
-                try {
-                  const res = await response.json();
-                  if (res.error) {
-                    console.error(res.error_description);
-                  } else {
-                    UserSettings.items.oneDriveToken = res.access_token;
-                    UserSettings.items.oneDriveRefreshToken = res.refresh_token;
-                    UserSettings.commitItems();
-                    success = true;
-                  }
-                } catch (error) {
-                  console.error(error);
-                  throw error;
-                }
-
-                uploadBackup("onedrive");
-                return success;
-              }
-            }
-          }
-        }
-
-        return;
-      }
-    );
-  }
+  );
 }
 
 async function uploadBackup(service: string) {

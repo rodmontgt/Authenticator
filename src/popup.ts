@@ -1,3 +1,4 @@
+import { cloudOrigins } from "./models/cloud-auth";
 // Vue
 import Vue from "vue";
 import Vuex from "vuex";
@@ -243,10 +244,7 @@ async function runScheduledBackup(clientTime: number, instance: Vue) {
   if (instance.$store.state.backup.driveToken) {
     chrome.permissions.contains(
       {
-        origins: [
-          "https://www.googleapis.com/*",
-          "https://accounts.google.com/o/oauth2/revoke",
-        ],
+        origins: cloudOrigins("drive"),
       },
       async (hasPermission) => {
         if (hasPermission) {
@@ -285,10 +283,7 @@ async function runScheduledBackup(clientTime: number, instance: Vue) {
   if (instance.$store.state.backup.oneDriveToken) {
     chrome.permissions.contains(
       {
-        origins: [
-          "https://graph.microsoft.com/me/*",
-          "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        ],
+        origins: cloudOrigins("onedrive"),
       },
       async (hasPermission) => {
         if (hasPermission) {
