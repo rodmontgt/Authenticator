@@ -20,4 +20,3 @@ OAuth setup and migration instructions are in [CLOUD_BACKUP.md](../../CLOUD_BACK
 - Repair cloud backup requests in Manifest V3 and send the authorization-code exchange parameters required by Microsoft ([#1](https://github.com/rodmontgt/Authenticator/pull/1))
 - Renew cloud sessions, preserve rotated refresh tokens and report denied access without leaving requests pending ([#1](https://github.com/rodmontgt/Authenticator/pull/1))
 - Apply OneDrive's encryption choice to OneDrive independently of Google Drive ([#1](https://github.com/rodmontgt/Authenticator/pull/1))
-
